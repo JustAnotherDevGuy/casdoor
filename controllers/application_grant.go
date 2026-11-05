@@ -17,6 +17,7 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
@@ -173,4 +174,120 @@ func (c *ApiController) GetApplicationGrantPrincipals() {
 	}
 
 	c.ResponseOk(principals)
+}
+
+// UpdateApplicationGrant
+// @Title UpdateApplicationGrant
+// @Tag Application Grant API
+// @Description change the application roles, expiry or description of a grant; whom and which application it is for can't change
+// @Param   body    body   object.ApplicationGrant  true        "The grant, identified by its owner and name"
+// @Success 200 {object} controllers.Response The Response object
+// @router /update-application-grant [post]
+func (c *ApiController) UpdateApplicationGrant() {
+	var request object.ApplicationGrant
+	err := json.Unmarshal(c.Ctx.Input.RequestBody, &request)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	grant, err := object.GetApplicationGrant(util.GetId(request.Owner, request.Name))
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+	if grant == nil {
+		if _, ok := c.RequireSignedInUser(); ok {
+			c.ResponseError(c.T("auth:Unauthorized operation"))
+		}
+		return
+	}
+
+	application, ok := c.requireApplicationGrantAdmin(grant.Owner, grant.Application)
+	if !ok {
+		return
+	}
+
+	err = object.CheckApplicationGrantUpdate(grant, &request, application, c.GetAcceptLanguage())
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+	grant.UpdatedBy = c.GetSessionUsername()
+
+	c.Data["json"] = wrapActionResponse(object.UpdateApplicationGrant(grant))
+	c.ServeJSON()
+}
+
+// UpdateApplicationRoles
+// @Title UpdateApplicationRoles
+// @Tag Application Grant API
+// @Description replace the application roles of an application. A role still assigned by a grant can't be removed.
+// @Param   body    body   object.Application  true        "owner (the application's organization), name and appRoles"
+// @Success 200 {object} controllers.Response The Response object
+// @router /update-application-roles [post]
+func (c *ApiController) UpdateApplicationRoles() {
+	var request struct {
+		Owner    string            `json:"owner"`
+		Name     string            `json:"name"`
+		AppRoles []*object.AppRole `json:"appRoles"`
+	}
+	err := json.Unmarshal(c.Ctx.Input.RequestBody, &request)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	application, ok := c.requireApplicationGrantAdmin(request.Owner, request.Name)
+	if !ok {
+		return
+	}
+
+	c.Data["json"] = wrapActionResponse(object.UpdateApplicationAppRoles(application, request.AppRoles, c.GetAcceptLanguage()))
+	c.ServeJSON()
+}
+
+// GetApplicationAccessPreview
+// @Title GetApplicationAccessPreview
+// @Tag Application Grant API
+// @Description explain how a user may sign in to an application and which groups, roles and claims the application receives, optionally with application roles added as if granted
+// @Param   owner          query    string  true    "The organization of the application"
+// @Param   application    query    string  true    "The name of the application"
+// @Param   user           query    string  true    "The user, organization/name"
+// @Param   roles          query    string  false   "Application roles to add, comma separated"
+// @Success 200 {object} object.ApplicationAccessPreview The Response object
+// @router /get-application-access-preview [get]
+func (c *ApiController) GetApplicationAccessPreview() {
+	owner := c.Ctx.Input.Query("owner")
+	applicationName := c.Ctx.Input.Query("application")
+	userId := c.Ctx.Input.Query("user")
+	roles := []string{}
+	for _, name := range strings.Split(c.Ctx.Input.Query("roles"), ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			roles = append(roles, name)
+		}
+	}
+
+	application, ok := c.requireApplicationGrantAdmin(owner, applicationName)
+	if !ok {
+		return
+	}
+
+	user, err := object.GetUser(userId)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+	if user == nil || user.IsDeleted {
+		c.ResponseError(fmt.Sprintf(c.T("general:The user: %s doesn't exist"), userId))
+		return
+	}
+
+	preview, err := object.GetApplicationAccessPreview(user, application, roles, c.GetAcceptLanguage())
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.ResponseOk(preview)
 }

@@ -128,6 +128,10 @@ func UpdateRole(id string, role *Role, isGlobalAdmin bool, lang string) (bool, e
 		if err != nil {
 			return false, err
 		}
+		err = renameAppRoleReferences(owner, false, util.GetId(owner, name), util.GetId(owner, role.Name))
+		if err != nil {
+			return false, err
+		}
 	}
 
 	affected, err := ormer.Engine.ID(core.PK{owner, name}).AllCols().Update(role)
