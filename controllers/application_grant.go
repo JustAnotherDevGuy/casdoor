@@ -30,6 +30,12 @@ func (c *ApiController) requireApplicationGrantAdmin(organization string, applic
 	if _, ok := c.RequireSignedInUser(); !ok {
 		return nil, false
 	}
+	// an application's client credentials act as an admin of its organization; access to other
+	// applications is only granted by people
+	if object.IsAppUser(c.GetSessionUsername()) {
+		c.ResponseError(c.T("auth:Unauthorized operation"))
+		return nil, false
+	}
 	if organization == "" || applicationName == "" || !c.IsAdminOfOrganization(organization) {
 		c.ResponseError(c.T("auth:Unauthorized operation"))
 		return nil, false
@@ -184,7 +190,14 @@ func (c *ApiController) GetApplicationGrantPrincipals() {
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-application-grant [post]
 func (c *ApiController) UpdateApplicationGrant() {
-	var request object.ApplicationGrant
+	// a field left out keeps its value, so a partial update can't clear an expiry by accident
+	var request struct {
+		Owner       string    `json:"owner"`
+		Name        string    `json:"name"`
+		Roles       *[]string `json:"roles"`
+		ExpireTime  *string   `json:"expireTime"`
+		Description *string   `json:"description"`
+	}
 	err := json.Unmarshal(c.Ctx.Input.RequestBody, &request)
 	if err != nil {
 		c.ResponseError(err.Error())
@@ -208,7 +221,18 @@ func (c *ApiController) UpdateApplicationGrant() {
 		return
 	}
 
-	err = object.CheckApplicationGrantUpdate(grant, &request, application, c.GetAcceptLanguage())
+	update := object.ApplicationGrant{Roles: grant.Roles, ExpireTime: grant.ExpireTime, Description: grant.Description}
+	if request.Roles != nil {
+		update.Roles = *request.Roles
+	}
+	if request.ExpireTime != nil {
+		update.ExpireTime = *request.ExpireTime
+	}
+	if request.Description != nil {
+		update.Description = *request.Description
+	}
+
+	err = object.CheckApplicationGrantUpdate(grant, &update, application, c.GetAcceptLanguage())
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
@@ -293,12 +317,24 @@ func (c *ApiController) GetApplicationAccessPreview() {
 		c.ResponseError(err.Error())
 		return
 	}
-	if user == nil || user.IsDeleted {
-		c.ResponseError(fmt.Sprintf(c.T("general:The user: %s doesn't exist"), userId))
+	draft := c.Ctx.Input.Query("draft") == "true"
+	// a user of another organization is only explained when a grant covers them, or as the
+	// principal of a grant being made; otherwise one answer, so the preview can't probe other
+	// organizations
+	visible := user != nil && !user.IsDeleted
+	if visible && user.Owner != application.Organization && !draft {
+		visible, err = object.IsApplicationGrantPrincipal(user, application)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+	}
+	if !visible {
+		c.ResponseError(fmt.Sprintf(c.T("application:The user: %s doesn't exist or has no grant for this application"), userId))
 		return
 	}
 
-	preview, err := object.GetApplicationAccessPreview(user, application, roles, c.Ctx.Input.Query("draft") == "true", c.GetAcceptLanguage())
+	preview, err := object.GetApplicationAccessPreview(user, application, roles, draft, c.GetAcceptLanguage())
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
