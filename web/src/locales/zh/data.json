@@ -137,6 +137,7 @@
     "Forced redirect origin": "强制重定向origin",
     "Form position": "表单位置",
     "Form position - Tooltip": "注册、登录、忘记密码等表单的位置",
+    "Gets access with this grant": "Gets access with this grant",
     "Grant Access": "Grant Access",
     "Grant privileged access": "Grant privileged access",
     "Grant types": "OAuth授权类型",

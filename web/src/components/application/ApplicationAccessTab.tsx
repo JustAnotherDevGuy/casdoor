@@ -303,7 +303,7 @@ export function ApplicationAccessTab({application, account, organizations, updat
 
   const previewDraft = () => {
     const user = principalType === "User" ? principal : "";
-    ApplicationGrantBackend.getApplicationAccessPreview(organization, application.name, user, grantRoles).then((res: any) => {
+    ApplicationGrantBackend.getApplicationAccessPreview(organization, application.name, user, grantRoles, true).then((res: any) => {
       if (res.status === "ok") {
         setDraftPreview(res.data);
       } else {

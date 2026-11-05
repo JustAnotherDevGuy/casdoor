@@ -55,6 +55,7 @@ export function AccessPreview({preview}: {preview: any}) {
     Native: i18next.t("application:Signs in as a user of the application's organization"),
     Grant: i18next.t("application:Signs in through an application grant"),
     Denied: i18next.t("application:Can't sign in"),
+    Pending: i18next.t("application:Gets access with this grant"),
   };
 
   return (
@@ -71,7 +72,7 @@ export function AccessPreview({preview}: {preview: any}) {
           {preview.reason ? <span className="text-xs text-muted-foreground">{preview.reason}</span> : null}
         </ClaimRow>
       ) : null}
-      {preview.access === "Denied" && (entitlements.roles ?? []).length > 0 ? (
+      {(preview.access === "Denied" || preview.access === "Pending") && (entitlements.roles ?? []).length > 0 ? (
         <p className="text-xs text-muted-foreground">{i18next.t("application:The values below apply once the user has access.")}</p>
       ) : null}
       {(entitlements.grants ?? []).length > 0 ? (

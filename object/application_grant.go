@@ -459,6 +459,14 @@ func CheckApplicationAccess(user *User, application *Application, lang string) (
 		return i18n.Translate(lang, "auth:Unauthorized operation"), nil
 	}
 
+	return checkApplicationGrantPreconditions(user, application, lang)
+}
+
+// checkApplicationGrantPreconditions returns why a user who holds a grant may still not sign in:
+// an identity that could be taken for another user's, or MFA the application's organization
+// requires and the user has not set up.
+func checkApplicationGrantPreconditions(user *User, application *Application, lang string) (string, error) {
+	var err error
 	identityOk, err := checkApplicationGrantIdentity(user, application)
 	if err != nil {
 		return "", err

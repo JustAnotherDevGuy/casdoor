@@ -255,6 +255,7 @@ func (c *ApiController) UpdateApplicationRoles() {
 // @Param   application    query    string  true    "The name of the application"
 // @Param   user           query    string  true    "The user, organization/name"
 // @Param   roles          query    string  false   "Application roles to add, comma separated"
+// @Param   draft          query    string  false   "true to preview a grant about to be made for the user"
 // @Success 200 {object} object.ApplicationAccessPreview The Response object
 // @router /get-application-access-preview [get]
 func (c *ApiController) GetApplicationAccessPreview() {
@@ -280,8 +281,10 @@ func (c *ApiController) GetApplicationAccessPreview() {
 			c.ResponseError(err.Error())
 			return
 		}
-		c.ResponseOk(&object.ApplicationAccessPreview{Entitlements: entitlements, Groups: entitlements.Groups, Roles: entitlements.RoleNames,
-			EmitsGroups: object.EmitsTokenField(application, "Groups"), EmitsRoles: object.EmitsTokenField(application, "Roles")})
+		c.ResponseOk(&object.ApplicationAccessPreview{
+			Entitlements: entitlements, Groups: entitlements.Groups, Roles: entitlements.RoleNames,
+			EmitsGroups: object.EmitsTokenField(application, "Groups"), EmitsRoles: object.EmitsTokenField(application, "Roles"),
+		})
 		return
 	}
 
@@ -295,7 +298,7 @@ func (c *ApiController) GetApplicationAccessPreview() {
 		return
 	}
 
-	preview, err := object.GetApplicationAccessPreview(user, application, roles, c.GetAcceptLanguage())
+	preview, err := object.GetApplicationAccessPreview(user, application, roles, c.Ctx.Input.Query("draft") == "true", c.GetAcceptLanguage())
 	if err != nil {
 		c.ResponseError(err.Error())
 		return

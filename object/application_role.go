@@ -476,7 +476,10 @@ func EmitsTokenField(application *Application, field string) bool {
 // GetApplicationAccessPreview explains the access of a user, with extraRoles added as if granted.
 // The user's own groups and roles are only shown when the user may already sign in to the
 // application, so a preview can't be used to read the memberships of another organization.
-func GetApplicationAccessPreview(user *User, application *Application, extraRoles []string, lang string) (*ApplicationAccessPreview, error) {
+//
+// With draft set, the preview is for a grant about to be made for the user: when the missing grant
+// is the only reason the user can't sign in, the access is "Pending".
+func GetApplicationAccessPreview(user *User, application *Application, extraRoles []string, draft bool, lang string) (*ApplicationAccessPreview, error) {
 	res := &ApplicationAccessPreview{
 		User: user.GetId(), HomeOrganization: user.Owner, OwnGroups: []string{}, OwnRoles: []string{},
 		EmitsGroups: EmitsTokenField(application, "Groups"), EmitsRoles: EmitsTokenField(application, "Roles"),
@@ -499,6 +502,20 @@ func GetApplicationAccessPreview(user *User, application *Application, extraRole
 		} else {
 			res.Access = "Denied"
 			res.Reason = msg
+			granted, err := HasApplicationGrant(user, application)
+			if err != nil {
+				return nil, err
+			}
+			if draft && !granted && user.Owner != application.Organization {
+				reason, err := checkApplicationGrantPreconditions(user, application, lang)
+				if err != nil {
+					return nil, err
+				}
+				if reason == "" {
+					res.Access = "Pending"
+				}
+				res.Reason = reason
+			}
 		}
 	}
 
@@ -509,7 +526,7 @@ func GetApplicationAccessPreview(user *User, application *Application, extraRole
 	res.Entitlements = entitlements
 	res.Privileged = entitlements.isPrivileged()
 
-	if res.Access == "Denied" {
+	if res.Access == "Denied" || res.Access == "Pending" {
 		res.PreferredName = GetApplicationGrantUserName(user)
 		res.Groups = entitlements.Groups
 		res.Roles = entitlements.RoleNames
