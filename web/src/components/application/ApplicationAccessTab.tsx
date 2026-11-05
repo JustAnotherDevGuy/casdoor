@@ -1,3 +1,17 @@
+// Copyright 2026 The Casdoor Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 import * as React from "react";
 import i18next from "i18next";
 import {Search, ShieldCheck, Trash2, UserPlus} from "lucide-react";
@@ -139,7 +153,7 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
       <div className="flex gap-3 rounded-md border bg-muted/40 p-4 text-sm">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="space-y-1">
-          <p className="font-medium">{i18next.t("application:Cross-organization access")}</p>
+          <p className="font-medium">{i18next.t("application:Cross-Organization Access")}</p>
           <p className="text-muted-foreground">
             {i18next.t("application:Existing users or groups of other organizations can sign in to this application with their own account, password and MFA. The application keeps its organization and its client ID. A grant only allows the sign-in. What the user may do in the application is still decided by the application.")}
           </p>
@@ -150,7 +164,7 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
       </div>
 
       <div className="space-y-3">
-        <h3 className="text-base font-semibold">{i18next.t("application:Grant access")}</h3>
+        <h3 className="text-base font-semibold">{i18next.t("application:Grant Access")}</h3>
         <FormRow label={i18next.t("general:Type")}>
           <Select
             value={principalType}
@@ -164,7 +178,7 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="User">{i18next.t("general:User")}</SelectItem>
-              <SelectItem value="Group">{i18next.t("application:Group")}</SelectItem>
+              <SelectItem value="Group">{i18next.t("subscription:Group")}</SelectItem>
             </SelectContent>
           </Select>
           {principalType === "Group" && (
@@ -196,7 +210,7 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
           )}
         </FormRow>
         <FormRow
-          label={principalType === "User" ? i18next.t("general:User") : i18next.t("application:Group")}
+          label={principalType === "User" ? i18next.t("general:User") : i18next.t("subscription:Group")}
           tooltip={isGlobalAdmin ? undefined : i18next.t("application:Enter the exact name, members of other organizations are not listed")}
         >
           <div className="flex flex-wrap gap-2">
@@ -213,7 +227,7 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
                   search();
                 }
               }}
-              placeholder={isGlobalAdmin ? i18next.t("application:Name or display name") : i18next.t("application:Exact name")}
+              placeholder={isGlobalAdmin ? i18next.t("application:Name or Display Name") : i18next.t("application:Exact Name")}
             />
             <Button type="button" variant="outline" onClick={search} disabled={!principalOrganization || !query.trim()}>
               <Search className="mr-1 h-4 w-4" />
@@ -239,7 +253,7 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
             </div>
           )}
         </FormRow>
-        <FormRow label={i18next.t("application:Expire time")} tooltip={i18next.t("application:Optional, the grant stops working at this time")}>
+        <FormRow label={i18next.t("application:Expire Time")} tooltip={i18next.t("application:Optional, the grant stops working at this time")}>
           <Input className="w-64" type="datetime-local" value={expireTime} onChange={(e) => setExpireTime(e.target.value)} />
         </FormRow>
         <FormRow label={i18next.t("general:Description")}>
@@ -248,21 +262,21 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
         <div>
           <Button type="button" onClick={grant} disabled={!principal || saving}>
             <UserPlus className="mr-1 h-4 w-4" />
-            {i18next.t("application:Grant access")}
+            {i18next.t("application:Grant Access")}
           </Button>
         </div>
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-base font-semibold">{i18next.t("application:Granted access")}</h3>
+        <h3 className="text-base font-semibold">{i18next.t("application:Granted Access")}</h3>
         <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{i18next.t("general:Type")}</TableHead>
                 <TableHead>{i18next.t("application:Principal")}</TableHead>
-                <TableHead>{i18next.t("application:Expire time")}</TableHead>
-                <TableHead>{i18next.t("application:Granted by")}</TableHead>
+                <TableHead>{i18next.t("application:Expire Time")}</TableHead>
+                <TableHead>{i18next.t("application:Granted By")}</TableHead>
                 <TableHead>{i18next.t("general:Created time")}</TableHead>
                 <TableHead>{i18next.t("general:Description")}</TableHead>
                 <TableHead className="w-24">{i18next.t("general:Action")}</TableHead>
@@ -278,16 +292,16 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
               ) : grants.map((item: any) => (
                 <TableRow key={item.name}>
                   <TableCell>
-                    <Badge variant="secondary">{item.principalType === "Group" ? i18next.t("application:Group") : i18next.t("general:User")}</Badge>
+                    <Badge variant="secondary">{item.principalType === "Group" ? i18next.t("subscription:Group") : i18next.t("general:User")}</Badge>
                   </TableCell>
                   <TableCell className="font-mono text-xs">{item.principal}</TableCell>
                   <TableCell>
                     {item.expireTime ? (
                       <span className={isExpired(item.expireTime) ? "text-destructive" : undefined}>
                         {Setting.getFormattedDate(item.expireTime)}
-                        {isExpired(item.expireTime) ? ` (${i18next.t("application:Expired")})` : ""}
+                        {isExpired(item.expireTime) ? ` (${i18next.t("subscription:Expired")})` : ""}
                       </span>
-                    ) : i18next.t("application:Never")}
+                    ) : i18next.t("invitation:Never")}
                   </TableCell>
                   <TableCell className="font-mono text-xs">{item.createdBy}</TableCell>
                   <TableCell>{Setting.getFormattedDate(item.createdTime)}</TableCell>
@@ -296,9 +310,9 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
                     <ConfirmButton
                       size="sm"
                       variant="outline"
-                      title={i18next.t("application:Revoke access") + "?"}
+                      title={i18next.t("application:Revoke Access") + "?"}
                       description={item.principal}
-                      confirmText={i18next.t("application:Revoke access")}
+                      confirmText={i18next.t("application:Revoke Access")}
                       onConfirm={() => revoke(item)}
                     >
                       <Trash2 className="mr-1 h-4 w-4" />

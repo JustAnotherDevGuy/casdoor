@@ -194,7 +194,7 @@ export default function ApplicationEditPage() {
           <TabsTrigger value="ui-customization">{i18next.t("application:UI Customization")}</TabsTrigger>
           <TabsTrigger value="security">{i18next.t("application:Security")}</TabsTrigger>
           <TabsTrigger value="reverse-proxy">{i18next.t("application:Reverse Proxy")}</TabsTrigger>
-          {mode !== "add" && <TabsTrigger value="access">{i18next.t("application:Cross-organization access")}</TabsTrigger>}
+          {mode !== "add" && <TabsTrigger value="access">{i18next.t("application:Cross-Organization Access")}</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="basic" className={tabClassName}>
