@@ -167,6 +167,11 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
               <SelectItem value="Group">{i18next.t("application:Group")}</SelectItem>
             </SelectContent>
           </Select>
+          {principalType === "Group" && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              {i18next.t("application:Everyone the other organization puts into this group or one of its subgroups gets access, including through default groups of its sign-up or sync settings.")}
+            </p>
+          )}
         </FormRow>
         <FormRow label={i18next.t("general:Organization")}>
           {isGlobalAdmin ? (

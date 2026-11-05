@@ -9,11 +9,12 @@
     "Invalid expire time: %s": "Invalid expire time: %s",
     "Invalid principal type: %s": "Invalid principal type: %s",
     "Invalid principal: %s": "Invalid principal: %s",
+    "The ID of the user: %s is not unique and can't identify the user to the application": "The ID of the user: %s is not unique and can't identify the user to the application",
     "The expire time must be in the future": "The expire time must be in the future",
     "The name %s is already used by a user of the application's organization": "The name %s is already used by a user of the application's organization",
     "The principal belongs to the organization of the application, which already has access": "The principal belongs to the organization of the application, which already has access",
     "The principal: %s already has a grant for this application": "The principal: %s already has a grant for this application",
-    "The user: %s has no ID and can't be granted access": "The user: %s has no ID and can't be granted access"
+    "The principal: %s does not exist": "The principal: %s does not exist"
   },
   "auth": {
     "Challenge method should be S256": "Challenge yöntemi S256 olmalı",
