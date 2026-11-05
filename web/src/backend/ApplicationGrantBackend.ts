@@ -96,8 +96,8 @@ export function updateApplicationRoles(organization: string, application: string
   }).then(res => res.json());
 }
 
-export function getApplicationAccessPreview(organization: string, application: string, user: string, roles: string[] = []) {
-  const params = new URLSearchParams({owner: organization, application, user, roles: roles.join(",")});
+export function getApplicationAccessPreview(organization: string, application: string, user: string, roles: string[] = [], draft = false) {
+  const params = new URLSearchParams({owner: organization, application, user, roles: roles.join(","), draft: String(draft)});
   return fetch(`${Setting.ServerUrl}/api/get-application-access-preview?${params.toString()}`, {
     method: "GET",
     credentials: "include",

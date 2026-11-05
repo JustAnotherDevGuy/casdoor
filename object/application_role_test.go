@@ -578,16 +578,16 @@ func TestAppRolePreviewAndMasking(t *testing.T) {
 	application := grantTestApplication(t, "pve-like")
 
 	// before any grant: what the role would add, without the user's own memberships
-	preview, err := GetApplicationAccessPreview(grantTestUser(t, grantTestPartnerOrg, "carol"), application, []string{"pve-admin"}, "en")
+	preview, err := GetApplicationAccessPreview(grantTestUser(t, grantTestPartnerOrg, "carol"), application, []string{"pve-admin"}, true, "en")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Access != "Denied" || len(preview.OwnGroups) != 0 || !preview.Privileged || !reflect.DeepEqual(preview.Groups, []string{"pve-admins"}) || preview.PreferredName != "carol@partner-org" {
+	if preview.Access != "Pending" || len(preview.OwnGroups) != 0 || !preview.Privileged || !reflect.DeepEqual(preview.Groups, []string{"pve-admins"}) || preview.PreferredName != "carol@partner-org" {
 		t.Fatalf("draft preview: %+v", preview)
 	}
 
 	addTestGrantWithRoles(t, "pve-like", ApplicationGrantPrincipalUser, "partner-org/carol", "pve-admin")
-	preview, err = GetApplicationAccessPreview(grantTestUser(t, grantTestPartnerOrg, "carol"), application, nil, "en")
+	preview, err = GetApplicationAccessPreview(grantTestUser(t, grantTestPartnerOrg, "carol"), application, nil, false, "en")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,12 +597,28 @@ func TestAppRolePreviewAndMasking(t *testing.T) {
 
 	claims := grantTestApplication(t, "claims-like")
 	claims.TokenFields = []string{"Name"}
-	if p, _ := GetApplicationAccessPreview(grantTestUser(t, grantTestResourceOrg, "internal-bob"), claims, nil, "en"); p.EmitsGroups || p.Access != "Native" {
+	if p, _ := GetApplicationAccessPreview(grantTestUser(t, grantTestResourceOrg, "internal-bob"), claims, nil, false, "en"); p.EmitsGroups || p.Access != "Native" {
 		t.Fatalf("preview should tell that the application does not emit groups: %+v", p)
 	}
 
 	masked := GetMaskedApplication(grantTestApplication(t, "pve-like"), "")
 	if len(masked.AppRoles) != 0 {
 		t.Fatal("application roles exposed to anonymous users")
+	}
+}
+
+func TestAppRoleDraftPreviewKeepsRealBlockers(t *testing.T) {
+	newAppRoleTestDb(t)
+	organization, _ := getOrganization("admin", grantTestResourceOrg)
+	organization.MfaItems = []*MfaItem{{Name: TotpType, Rule: "Required"}}
+	if _, err := ormer.Engine.ID([]interface{}{"admin", grantTestResourceOrg}).Cols("mfa_items").Update(organization); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := GetApplicationAccessPreview(grantTestUser(t, grantTestPartnerOrg, "carol"), grantTestApplication(t, "pve-like"), nil, true, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Access != "Denied" || !strings.Contains(preview.Reason, "multi-factor") {
+		t.Fatalf("a draft preview hid the MFA requirement: %+v", preview)
 	}
 }
