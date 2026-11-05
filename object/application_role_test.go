@@ -607,18 +607,98 @@ func TestAppRolePreviewAndMasking(t *testing.T) {
 	}
 }
 
-func TestAppRoleDraftPreviewKeepsRealBlockers(t *testing.T) {
+func TestAppRoleDraftPreviewDoesNotProbe(t *testing.T) {
 	newAppRoleTestDb(t)
 	organization, _ := getOrganization("admin", grantTestResourceOrg)
 	organization.MfaItems = []*MfaItem{{Name: TotpType, Rule: "Required"}}
 	if _, err := ormer.Engine.ID([]interface{}{"admin", grantTestResourceOrg}).Cols("mfa_items").Update(organization); err != nil {
 		t.Fatal(err)
 	}
+	// before the grant, the MFA set-up of a user of another organization is not revealed
 	preview, err := GetApplicationAccessPreview(grantTestUser(t, grantTestPartnerOrg, "carol"), grantTestApplication(t, "pve-like"), nil, true, "en")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if preview.Access != "Pending" || preview.Reason != "" {
+		t.Fatalf("a draft preview revealed a precondition of a user of another organization: %+v", preview)
+	}
+	// once granted, explaining the access shows why the user can't sign in
+	addTestGrant(t, "pve-like", ApplicationGrantPrincipalUser, "partner-org/carol")
+	preview, err = GetApplicationAccessPreview(grantTestUser(t, grantTestPartnerOrg, "carol"), grantTestApplication(t, "pve-like"), nil, false, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if preview.Access != "Denied" || !strings.Contains(preview.Reason, "multi-factor") {
-		t.Fatalf("a draft preview hid the MFA requirement: %+v", preview)
+		t.Fatalf("the MFA requirement is not explained for a granted user: %+v", preview)
+	}
+	// a global admin signs in natively, but their memberships are not the application's business
+	admin := grantTestUser(t, "built-in", "admin")
+	admin.Groups = []string{"built-in/secret-team"}
+	preview, err = GetApplicationAccessPreview(admin, grantTestApplication(t, "pve-like"), nil, false, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Access != "Native" || len(preview.OwnGroups) != 0 {
+		t.Fatalf("the memberships of a global admin were shown: %+v", preview)
+	}
+}
+
+func TestAppRolePrivilegedRolesStayOffForeignGroups(t *testing.T) {
+	newAppRoleTestDb(t)
+	setAppRoles(t, "pve-like", &AppRole{Name: "pve-admin", Groups: []string{"resource-org/pve-admins"}, IsPrivileged: true}, &AppRole{Name: "reader", Groups: []string{"resource-org/readers"}})
+	application := grantTestApplication(t, "pve-like")
+
+	grant := ApplicationGrant{Owner: grantTestResourceOrg, Application: "pve-like", PrincipalType: "Group", Principal: "partner-org/team", Roles: []string{"pve-admin"}}
+	if err := CheckApplicationGrant(&grant, application, "en"); err == nil {
+		t.Fatal("a privileged role was granted to a group another organization controls")
+	}
+	// a user of the other organization, or a group of the application's own, may get it
+	addTestGrantWithRoles(t, "pve-like", ApplicationGrantPrincipalUser, "partner-org/carol", "pve-admin")
+	addTestGrantWithRoles(t, "pve-like", ApplicationGrantPrincipalGroup, "resource-org/readers", "pve-admin")
+
+	groupGrant := addTestGrantWithRoles(t, "pve-like", ApplicationGrantPrincipalGroup, "partner-org/team", "reader")
+	stored, _ := GetApplicationGrant(groupGrant.GetId())
+	if err := CheckApplicationGrantUpdate(stored, &ApplicationGrant{Roles: []string{"reader", "pve-admin"}}, application, "en"); err == nil {
+		t.Fatal("an edit added a privileged role to a foreign group grant")
+	}
+	if _, err := UpdateApplicationAppRoles(application, []*AppRole{{Name: "pve-admin", Groups: []string{"resource-org/pve-admins"}, IsPrivileged: true}, {Name: "reader", Groups: []string{"resource-org/readers"}, IsPrivileged: true}}, "en"); err == nil {
+		t.Fatal("a role held by a foreign group grant was made privileged")
+	}
+}
+
+func TestAppRoleReferencesRemovedWithTheirGroupOrRole(t *testing.T) {
+	newAppRoleTestDb(t)
+	setAppRoles(t, "claims-like", &AppRole{Name: "reader", Groups: []string{"resource-org/readers"}, Roles: []string{"resource-org/viewer"}})
+
+	group, _ := getGroup(grantTestResourceOrg, "readers")
+	if _, err := DeleteGroup(group); err != nil {
+		t.Fatal(err)
+	}
+	role, _ := getRole(grantTestResourceOrg, "viewer")
+	if _, err := DeleteRole(role); err != nil {
+		t.Fatal(err)
+	}
+	appRole := grantTestApplication(t, "claims-like").getAppRole("reader")
+	if len(appRole.Groups) != 0 || len(appRole.Roles) != 0 {
+		t.Fatalf("references to deleted objects kept, a recreated one would be projected: %+v", appRole)
+	}
+}
+
+func TestAppRolePartialUpdateValidatesAgainstStoredApplication(t *testing.T) {
+	newAppRoleTestDb(t)
+	setAppRoles(t, "claims-like", &AppRole{Name: "reader", Claims: []*JwtItem{{Name: "level", Value: "1", Type: "String"}}})
+	stored := grantTestApplication(t, "claims-like")
+
+	// a request that only changes the token attributes, colliding with a stored role claim
+	request := *stored
+	request.TokenAttributes = append(request.TokenAttributes, &JwtItem{Name: "level", Category: "Static Value", Value: "9", Type: "String"})
+	if _, err := UpdateApplication("admin/claims-like", &request, true, "en", []string{"token_attributes"}); err == nil {
+		t.Fatal("a token attribute colliding with a role claim was saved")
+	}
+	// and a role claim colliding with a Properties.* token field
+	request = *stored
+	request.TokenFields = append(request.TokenFields, "Properties.level")
+	if _, err := UpdateApplication("admin/claims-like", &request, true, "en", nil); err == nil {
+		t.Fatal("a Properties token field colliding with a role claim was saved")
 	}
 }

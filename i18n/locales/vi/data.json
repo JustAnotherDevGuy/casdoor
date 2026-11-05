@@ -24,7 +24,9 @@
     "The principal belongs to the organization of the application, which already has access": "The principal belongs to the organization of the application, which already has access",
     "The principal: %s already has a grant for this application": "The principal: %s already has a grant for this application",
     "The principal: %s does not exist": "The principal: %s does not exist",
-    "The role: %s does not exist": "The role: %s does not exist"
+    "The privileged application role: %s can only be granted to users of other organizations, not to their groups": "The privileged application role: %s can only be granted to users of other organizations, not to their groups",
+    "The role: %s does not exist": "The role: %s does not exist",
+    "The user: %s doesn't exist or has no grant for this application": "The user: %s doesn't exist or has no grant for this application"
   },
   "auth": {
     "Challenge method should be S256": "Phương pháp thách thức nên là S256",

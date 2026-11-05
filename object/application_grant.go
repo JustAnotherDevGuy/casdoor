@@ -230,12 +230,21 @@ func CheckApplicationGrant(grant *ApplicationGrant, application *Application, la
 
 // checkApplicationGrantRoles requires every role of the grant to be an application role of the
 // application, so a grant can only assign what the application's organization defined.
+//
+// A privileged role can't be assigned to a group of another organization: whoever administers
+// that group, outside the application's organization, could add anyone to it, including themselves.
 func checkApplicationGrantRoles(grant *ApplicationGrant, application *Application, lang string) error {
+	principalOwner, _ := util.GetOwnerAndNameFromIdNoCheck(grant.Principal)
+	isForeignGroup := grant.PrincipalType == ApplicationGrantPrincipalGroup && principalOwner != application.Organization
 	seen := map[string]bool{}
 	roles := []string{}
 	for _, name := range grant.Roles {
-		if application.getAppRole(name) == nil {
+		role := application.getAppRole(name)
+		if role == nil {
 			return fmt.Errorf(i18n.Translate(lang, "application:The application role: %s does not exist"), name)
+		}
+		if role.IsPrivileged && isForeignGroup {
+			return fmt.Errorf(i18n.Translate(lang, "application:The privileged application role: %s can only be granted to users of other organizations, not to their groups"), name)
 		}
 		if !seen[name] {
 			seen[name] = true

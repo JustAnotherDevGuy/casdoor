@@ -117,7 +117,10 @@ func (application *Application) getAppRole(name string) *AppRole {
 // CheckApplicationAppRoles validates the application roles of an application before it is saved:
 // the groups and roles they project must belong to the application's own organization, and their
 // custom claims must not set protocol, identity or application-wide claims.
-func CheckApplicationAppRoles(application *Application, lang string) error {
+//
+// stored is the application as saved before, if any: the custom claims must not collide with its
+// token attributes either, so a partial update of one side can't sneak past the other.
+func CheckApplicationAppRoles(application *Application, lang string, stored ...*Application) error {
 	if len(application.AppRoles) == 0 {
 		return nil
 	}
@@ -126,9 +129,20 @@ func CheckApplicationAppRoles(application *Application, lang string) error {
 	}
 
 	appAttributes := map[string]bool{}
-	for _, item := range application.TokenAttributes {
-		if item != nil {
-			appAttributes[strings.ToLower(item.Name)] = true
+	for _, app := range append([]*Application{application}, stored...) {
+		if app == nil {
+			continue
+		}
+		for _, item := range app.TokenAttributes {
+			if item != nil {
+				appAttributes[strings.ToLower(item.Name)] = true
+			}
+		}
+		// "Properties.<name>" token fields become the claim <name>
+		for _, field := range app.TokenFields {
+			if strings.HasPrefix(field, "Properties.") {
+				appAttributes[strings.ToLower(strings.TrimPrefix(field, "Properties."))] = true
+			}
 		}
 	}
 
@@ -506,15 +520,11 @@ func GetApplicationAccessPreview(user *User, application *Application, extraRole
 			if err != nil {
 				return nil, err
 			}
+			// the MFA set-up and the identity of a user of another organization are only checked
+			// once the user holds a grant, a draft can't be used to probe them
 			if draft && !granted && user.Owner != application.Organization {
-				reason, err := checkApplicationGrantPreconditions(user, application, lang)
-				if err != nil {
-					return nil, err
-				}
-				if reason == "" {
-					res.Access = "Pending"
-				}
-				res.Reason = reason
+				res.Access = "Pending"
+				res.Reason = ""
 			}
 		}
 	}
@@ -555,6 +565,12 @@ func GetApplicationAccessPreview(user *User, application *Application, extraRole
 		if err != nil {
 			return nil, err
 		}
+	}
+	// the memberships of a user of another organization are only shown when a grant gives the
+	// application that user, not for e.g. a global admin who signs in natively
+	if user.Owner != application.Organization && res.Access != "Grant" {
+		ownUser.Groups = []string{}
+		ownUser.Roles = []*Role{}
 	}
 	res.OwnGroups = append(res.OwnGroups, ownUser.Groups...)
 	res.OwnRoles = getUserRoleNames(&ownUser)
@@ -621,6 +637,11 @@ func UpdateApplicationAppRoles(application *Application, roles []*AppRole, lang 
 				return false, fmt.Errorf(i18n.Translate(lang, "application:The application role: %s is still assigned by the grant for: %s"), name, grant.Principal)
 			}
 		}
+		// a role can't become privileged while a group of another organization holds it
+		edited := *grant
+		if err = checkApplicationGrantRoles(&edited, &updated, lang); err != nil {
+			return false, err
+		}
 	}
 
 	_, err = ormer.Engine.ID([]interface{}{application.Owner, application.Name}).Cols("app_roles").Update(&Application{AppRoles: roles})
@@ -628,4 +649,46 @@ func UpdateApplicationAppRoles(application *Application, roles []*AppRole, lang 
 		return false, err
 	}
 	return true, nil
+}
+
+// removeAppRoleReferences drops a deleted group or role of an organization from the application
+// roles of its applications, so one created later under the same name is not projected.
+func removeAppRoleReferences(organization string, isGroup bool, id string) error {
+	applications := []*Application{}
+	err := ormer.Engine.Where("organization = ?", organization).Find(&applications)
+	if err != nil {
+		return err
+	}
+	for _, application := range applications {
+		changed := false
+		for _, role := range application.AppRoles {
+			if role == nil {
+				continue
+			}
+			if isGroup && util.InSlice(role.Groups, id) {
+				role.Groups = util.DeleteVal(role.Groups, id)
+				changed = true
+			}
+			if !isGroup && util.InSlice(role.Roles, id) {
+				role.Roles = util.DeleteVal(role.Roles, id)
+				changed = true
+			}
+		}
+		if changed {
+			_, err = ormer.Engine.ID([]interface{}{application.Owner, application.Name}).Cols("app_roles").Update(application)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// IsApplicationGrantPrincipal reports whether a valid grant of the application covers the user.
+func IsApplicationGrantPrincipal(user *User, application *Application) (bool, error) {
+	grants, err := getMatchingApplicationGrants(user, application)
+	if err != nil {
+		return false, err
+	}
+	return len(grants) > 0, nil
 }

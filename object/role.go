@@ -128,15 +128,18 @@ func UpdateRole(id string, role *Role, isGlobalAdmin bool, lang string) (bool, e
 		if err != nil {
 			return false, err
 		}
-		err = renameAppRoleReferences(owner, false, util.GetId(owner, name), util.GetId(owner, role.Name))
-		if err != nil {
-			return false, err
-		}
 	}
 
 	affected, err := ormer.Engine.ID(core.PK{owner, name}).AllCols().Update(role)
 	if err != nil {
 		return false, err
+	}
+
+	if renameRole && affected != 0 {
+		err = renameAppRoleReferences(owner, false, util.GetId(owner, name), util.GetId(owner, role.Name))
+		if err != nil {
+			return false, err
+		}
 	}
 
 	if renameRole && affected != 0 {
@@ -227,7 +230,11 @@ func DeleteRole(role *Role) (bool, error) {
 		}
 	}
 
-	return deleteRole(role)
+	affected, err := deleteRole(role)
+	if err != nil || !affected {
+		return affected, err
+	}
+	return affected, removeAppRoleReferences(role.Owner, false, roleId)
 }
 
 func (role *Role) GetId() string {

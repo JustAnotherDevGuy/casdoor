@@ -489,7 +489,7 @@ func UpdateApplication(id string, application *Application, isGlobalAdmin bool, 
 		return false, err
 	}
 
-	err = CheckApplicationAppRoles(application, lang)
+	err = CheckApplicationAppRoles(application, lang, oldApplication)
 	if err != nil {
 		return false, err
 	}

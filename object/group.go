@@ -324,6 +324,10 @@ func DeleteGroup(group *Group) (bool, error) {
 		return affected, err
 	}
 
+	err = removeAppRoleReferences(group.Owner, true, group.GetId())
+	if err != nil {
+		return affected, err
+	}
 	return affected, deleteApplicationGrantsByPrincipal(ApplicationGrantPrincipalGroup, group.GetId())
 }
 
