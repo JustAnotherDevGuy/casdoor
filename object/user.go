@@ -1447,6 +1447,11 @@ func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, 
 	if err != nil {
 		return nil, err
 	}
+	// what the application roles of the user's application grants add, for this application only
+	entitlements, err := GetApplicationEntitlements(user, application, nil)
+	if err != nil {
+		return nil, err
+	}
 	allowedFields := make(map[string]bool)
 	hasWhitelist := application != nil && len(application.TokenFields) > 0
 	if hasWhitelist {
@@ -1488,6 +1493,11 @@ func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, 
 				}
 				resp.Groups = groups
 			}
+			for _, value := range entitlements.Groups {
+				if !util.InSlice(resp.Groups, value) {
+					resp.Groups = append(resp.Groups, value)
+				}
+			}
 		}
 
 		if allowed("Roles") || allowed("Permissions") {
@@ -1507,6 +1517,11 @@ func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, 
 				resp.Roles = []string{}
 				for _, role := range rolesUser.Roles {
 					resp.Roles = append(resp.Roles, role.Name)
+				}
+				for _, name := range entitlements.RoleNames {
+					if !util.InSlice(resp.Roles, name) {
+						resp.Roles = append(resp.Roles, name)
+					}
 				}
 			}
 
@@ -1551,11 +1566,20 @@ func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, 
 			return nil, err
 		}
 
-		refinedUser, err := getTokenUser(application, &tokenUser)
+		refinedUser, _, err := getTokenUser(application, &tokenUser)
 		if err != nil {
 			return nil, err
 		}
 		resp.CustomClaims = getTokenAttributeClaims(refinedUser, application.TokenAttributes)
+	}
+
+	for name, value := range entitlements.Claims {
+		if resp.CustomClaims == nil {
+			resp.CustomClaims = map[string]interface{}{}
+		}
+		if _, ok := resp.CustomClaims[name]; !ok {
+			resp.CustomClaims[name] = value
+		}
 	}
 
 	return &resp, nil
