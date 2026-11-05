@@ -181,12 +181,37 @@ def roles_section(global_admin, resource_admin, partner_admin):
     _, res = resource_admin.request("POST", "/api/update-application-roles", body={**body, "appRoles": [pve_admin]})
     check("roles: a role still assigned can't be removed", res.get("status") != "ok", res)
 
+    expiry = "2099-01-01T00:00:00Z"
+    resource_admin.request("POST", "/api/update-application-grant", body={"owner": "resource-org", "name": grant["name"] if grant else "", "roles": ["reader"], "expireTime": expiry, "description": "kept"})
+    resource_admin.request("POST", "/api/update-application-grant", body={"owner": "resource-org", "name": grant["name"] if grant else "", "roles": ["reader"]})
+    _, grants = resource_admin.request("GET", "/api/get-application-grants", query={"owner": "resource-org", "application": "pve-like"})
+    kept = next((g for g in grants.get("data") or [] if g["name"] == (grant or {}).get("name")), {})
+    check("roles: a partial grant update keeps the expiry and description", kept.get("expireTime") == expiry and kept.get("description") == "kept", kept)
+
+    _, res = resource_admin.request("POST", "/api/add-application-grant", body={
+        "owner": "resource-org", "application": "pve-like", "principalType": "Group", "principal": "partner-org/team", "roles": ["pve-admin"]})
+    check("roles: a privileged role can't go to a group of another organization", res.get("status") != "ok", res)
+
     _, preview = resource_admin.request("GET", "/api/get-application-access-preview", query={"owner": "resource-org", "application": "pve-like", "user": "partner-org/carol"})
     data = preview.get("data") or {}
     check("roles: preview explains the grant", data.get("access") == "Grant" and [r["name"] for r in data["entitlements"]["roles"]] == ["reader"], data)
-    _, preview = resource_admin.request("GET", "/api/get-application-access-preview", query={"owner": "resource-org", "application": "pve-like", "user": "partner-org/dave", "roles": "pve-admin"})
+    _, preview = resource_admin.request("GET", "/api/get-application-access-preview", query={"owner": "resource-org", "application": "pve-like", "user": "partner-org/dave", "roles": "pve-admin", "draft": "true"})
     data = preview.get("data") or {}
-    check("roles: draft preview hides the memberships of an ungranted user", data.get("access") == "Denied" and data.get("ownGroups") == [] and data.get("groups") == ["pve-admins"] and data.get("privileged"), data)
+    check("roles: draft preview hides the memberships of an ungranted user", data.get("access") == "Pending" and not data.get("reason") and data.get("ownGroups") == [] and data.get("groups") == ["pve-admins"] and data.get("privileged"), data)
+    _, missing = resource_admin.request("GET", "/api/get-application-access-preview", query={"owner": "resource-org", "application": "pve-like", "user": "partner-org/nobody"})
+    _, ungranted = resource_admin.request("GET", "/api/get-application-access-preview", query={"owner": "resource-org", "application": "pve-like", "user": "partner-org/dave"})
+    check("roles: preview answers alike for a missing and an ungranted foreign user", missing.get("status") != "ok" and ungranted.get("status") != "ok" and missing.get("msg", "").replace("nobody", "x") == ungranted.get("msg", "").replace("dave", "x"), (missing, ungranted))
+
+    _, res = Client().request("GET", "/api/get-application-grants", query={"owner": "resource-org", "application": "pve-like", "clientId": "e2e-client-pve", "clientSecret": "e2e-secret-pve"})
+    check("roles: application client credentials can't manage grants", res.get("status") != "ok", res)
+
+    _, app = resource_admin.request("GET", "/api/get-application", query={"id": "admin/pve-like"})
+    app = app.get("data") or {}
+    tampered = dict(app, appRoles=[{"name": "reader", "groups": ["resource-org/pve-admins"], "roles": [], "claims": [], "isPrivileged": False}])
+    _, res = resource_admin.request("POST", "/api/update-application", query={"id": "admin/pve-like"}, body=tampered)
+    _, after = resource_admin.request("GET", "/api/get-application", query={"id": "admin/pve-like"})
+    roles_after = {r["name"]: r for r in (after.get("data") or {}).get("appRoles") or []}
+    check("roles: saving the whole application can't change its roles", res.get("status") == "ok" and "pve-admin" in roles_after and roles_after.get("reader", {}).get("groups") == [], (res, roles_after))
     _, preview = partner_admin.request("GET", "/api/get-application-access-preview", query={"owner": "resource-org", "application": "pve-like", "user": "resource-org/internal-bob"})
     check("roles: partner-org admin can't explain access to a foreign application", preview.get("status") != "ok", preview)
 
