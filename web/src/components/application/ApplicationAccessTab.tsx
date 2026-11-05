@@ -141,7 +141,7 @@ export function ApplicationAccessTab({application, account, organizations}: Appl
         <div className="space-y-1">
           <p className="font-medium">{i18next.t("application:Cross-organization access")}</p>
           <p className="text-muted-foreground">
-            {i18next.t("application:Existing users or groups of other organizations can sign in to this application with their own account, password and MFA. The application keeps its organization and its client ID. A grant only allows the sign-in: what the user may do in the application is still decided by the application.")}
+            {i18next.t("application:Existing users or groups of other organizations can sign in to this application with their own account, password and MFA. The application keeps its organization and its client ID. A grant only allows the sign-in. What the user may do in the application is still decided by the application.")}
           </p>
           <p className="text-muted-foreground">
             {i18next.t("application:A granted user is named username@organization in the tokens and in the userinfo, and their groups, roles and permissions carry their organization. Revoking a grant stops new sign-ins, token refreshes and userinfo at once; tokens already issued expire at the latest after the application's token lifetime.")}
