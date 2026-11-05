@@ -132,6 +132,71 @@ def userinfo(access_token):
     return Client().request("GET", "/api/userinfo", headers={"Authorization": "Bearer " + access_token})
 
 
+def roles_section(global_admin, resource_admin, partner_admin):
+    """Application roles: what a grant may add to one application's claims, and who may set it."""
+    pve_admin = {"name": "pve-admin", "displayName": "PVE administrators", "isPrivileged": True, "groups": ["resource-org/pve-admins"], "roles": [], "claims": []}
+    reader = {"name": "reader", "groups": [], "roles": [], "claims": [{"name": "app_role", "value": "Reader", "type": "String", "category": "Static Value"}]}
+    body = {"owner": "resource-org", "name": "pve-like", "application": "pve-like", "appRoles": [pve_admin, reader]}
+
+    _, res = partner_admin.request("POST", "/api/update-application-roles", body=body)
+    check("roles: partner-org admin can't define roles of a foreign application", res.get("status") != "ok", res)
+    _, res = resource_admin.request("POST", "/api/update-application-roles", body={**body, "appRoles": [{**pve_admin, "groups": ["partner-org/pve-admins"]}]})
+    check("roles: a role can't project a group of another organization", res.get("status") != "ok", res)
+    _, res = resource_admin.request("POST", "/api/update-application-roles", body={**body, "appRoles": [{**reader, "claims": [{"name": "sub", "value": "x", "type": "String"}]}]})
+    check("roles: a role can't set the sub claim", res.get("status") != "ok", res)
+    _, res = resource_admin.request("POST", "/api/update-application-roles", body=body)
+    check("roles: resource-org admin defines the application's roles", res.get("status") == "ok", res)
+    _, app = Client().request("GET", "/api/get-application", query={"id": "admin/pve-like"})
+    check("roles: role definitions are hidden from anonymous callers", not ((app or {}).get("data") or {}).get("appRoles"), (app or {}).get("data", {}).get("appRoles") if isinstance(app, dict) else app)
+
+    _, res = resource_admin.request("POST", "/api/add-application-grant", body={
+        "owner": "resource-org", "application": "pve-like", "principalType": "User", "principal": "partner-org/carol", "roles": ["undefined"]})
+    check("roles: a grant can't assign an undefined role", res.get("status") != "ok", res)
+    _, res = resource_admin.request("POST", "/api/add-application-grant", body={
+        "owner": "resource-org", "application": "pve-like", "principalType": "User", "principal": "partner-org/carol", "roles": ["pve-admin"], "description": "e2e roles"})
+    check("roles: grant with the privileged role", res.get("status") == "ok", res)
+    _, grants = resource_admin.request("GET", "/api/get-application-grants", query={"owner": "resource-org", "application": "pve-like"})
+    grant = next((g for g in grants.get("data") or [] if g["principal"] == "partner-org/carol"), None)
+    check("roles: the grant lists its roles", grant and grant.get("roles") == ["pve-admin"], grant)
+
+    flow = authorize("pve-like", "carol")
+    tokens = exchange("pve-like", flow) if "code" in flow else {}
+    claims = jwt_claims(tokens["access_token"]) if "access_token" in tokens else {}
+    check("roles: projected Proxmox group in the token", "pve-admins" in (claims.get("groups") or []), claims.get("groups"))
+    check("roles: own group still qualified next to it", "partner-org/pve-admins" in (claims.get("groups") or []), claims.get("groups"))
+    check("roles: identity claims unchanged", claims.get("name") == "carol@partner-org", claims.get("name"))
+    status, info = userinfo(tokens.get("access_token", ""))
+    check("roles: projected group in userinfo", status == 200 and "pve-admins" in (info.get("groups") or []), info)
+
+    _, res = partner_admin.request("POST", "/api/update-application-grant", body={"owner": "resource-org", "name": grant["name"] if grant else "", "roles": ["pve-admin", "reader"]})
+    check("roles: partner-org admin can't change the grant", res.get("status") != "ok", res)
+    _, res = resource_admin.request("POST", "/api/update-application-grant", body={"owner": "resource-org", "name": grant["name"] if grant else "", "application": "pve-like", "roles": ["reader"], "principal": "partner-org/dave"})
+    check("roles: resource-org admin changes the grant's roles", res.get("status") == "ok", res)
+    status, info = userinfo(tokens.get("access_token", ""))
+    check("roles: userinfo drops the removed role at once", status == 200 and "pve-admins" not in (info.get("groups") or []) and info.get("app_role") == "Reader", info)
+    _, grants = resource_admin.request("GET", "/api/get-application-grants", query={"owner": "resource-org", "application": "pve-like"})
+    edited = next((g for g in grants.get("data") or [] if g["name"] == (grant or {}).get("name")), {})
+    check("roles: the edit can't move the grant to another principal", edited.get("principal") == "partner-org/carol" and edited.get("updatedBy") == "resource-org/resource-admin", edited)
+
+    _, res = resource_admin.request("POST", "/api/update-application-roles", body={**body, "appRoles": [pve_admin]})
+    check("roles: a role still assigned can't be removed", res.get("status") != "ok", res)
+
+    _, preview = resource_admin.request("GET", "/api/get-application-access-preview", query={"owner": "resource-org", "application": "pve-like", "user": "partner-org/carol"})
+    data = preview.get("data") or {}
+    check("roles: preview explains the grant", data.get("access") == "Grant" and [r["name"] for r in data["entitlements"]["roles"]] == ["reader"], data)
+    _, preview = resource_admin.request("GET", "/api/get-application-access-preview", query={"owner": "resource-org", "application": "pve-like", "user": "partner-org/dave", "roles": "pve-admin"})
+    data = preview.get("data") or {}
+    check("roles: draft preview hides the memberships of an ungranted user", data.get("access") == "Denied" and data.get("ownGroups") == [] and data.get("groups") == ["pve-admins"] and data.get("privileged"), data)
+    _, preview = partner_admin.request("GET", "/api/get-application-access-preview", query={"owner": "resource-org", "application": "pve-like", "user": "resource-org/internal-bob"})
+    check("roles: partner-org admin can't explain access to a foreign application", preview.get("status") != "ok", preview)
+
+    check("roles: dave (no grant) still denied", "error" in authorize("pve-like", "dave"))
+    flow = authorize("pve-like", "internal-bob")
+    tokens = exchange("pve-like", flow) if "code" in flow else {}
+    claims = jwt_claims(tokens["access_token"]) if "access_token" in tokens else {}
+    check("roles: internal user's claims unchanged by roles", claims.get("name") == "internal-bob" and claims.get("groups") == ["pve-admins"] and "app_role" not in claims, claims)
+
+
 def main():
     status, health = Client().request("GET", "/api/health")
     check("server healthy", status == 200, health)
@@ -262,6 +327,8 @@ def main():
         status, info = userinfo(tokens["access_token"])
         check("C: userinfo refused after the group membership was removed", status == 401, (status, info))
 
+    roles_section(global_admin, resource_admin, partner_admin)
+
     # audit trail
     _, records = global_admin.request("GET", "/api/get-records", query={"pageSize": 100, "p": 1, "field": "action", "value": "add-application-grant"})
     data = records.get("data") or []
@@ -304,5 +371,29 @@ def baseline():
     return 1 if failed else 0
 
 
+def rollback_to_grants():
+    """After rolling an upgraded database back to a build with grants but without application roles:
+    grants still allow the sign-in, nothing is projected any more (fail closed), internal users are unchanged."""
+    status, _ = Client().request("GET", "/api/health")
+    check("server healthy", status == 200)
+    flow = authorize("pve-like", "internal-bob")
+    tokens = exchange("pve-like", flow) if "code" in flow else {}
+    claims = jwt_claims(tokens["access_token"]) if "access_token" in tokens else {}
+    check("internal user unchanged", claims.get("name") == "internal-bob" and claims.get("groups") == ["pve-admins"], claims or flow)
+    flow = authorize("pve-like", "carol")
+    tokens = exchange("pve-like", flow) if "code" in flow else {}
+    claims = jwt_claims(tokens["access_token"]) if "access_token" in tokens else {}
+    check("granted user still signs in", claims.get("name") == "carol@partner-org", claims or flow)
+    check("no projected group or claim without application role support", "pve-admins" not in (claims.get("groups") or []) and "app_role" not in claims, claims)
+    check("ungranted user denied", "error" in authorize("pve-like", "dave"))
+    failed = [name for name, ok in results if not ok]
+    print(f"\n{len(results) - len(failed)}/{len(results)} rollback checks passed")
+    return 1 if failed else 0
+
+
 if __name__ == "__main__":
-    sys.exit(baseline() if "--baseline" in sys.argv else main())
+    if "--baseline" in sys.argv:
+        sys.exit(baseline())
+    if "--rollback-to-grants" in sys.argv:
+        sys.exit(rollback_to_grants())
+    sys.exit(main())

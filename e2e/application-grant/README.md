@@ -12,5 +12,5 @@ the token, refresh and userinfo endpoints, revocation and the audit records.
 grant support and after rolling an upgraded database back to it: internal users sign in with
 unchanged claims, refresh works, users of other organizations stay denied.
 
-The `albweb-image` workflow runs the upgrade path on PostgreSQL: stock image → this build →
-stock image again on the same database.
+The `albweb-image` workflow runs the upgrade path on PostgreSQL: stock image → deployed fork build → this build →
+deployed fork build → stock image again on the same database. `--rollback-to-grants` checks the rollback to a build with grants but without application roles.
