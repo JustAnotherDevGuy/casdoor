@@ -743,3 +743,85 @@ func TestApplicationGrantPrincipalSearch(t *testing.T) {
 		t.Fatal("search returned the application's own organization")
 	}
 }
+
+func TestApplicationGrantSubjectCollision(t *testing.T) {
+	newApplicationGrantTestDb(t)
+	addTestGrant(t, "pve-like", ApplicationGrantPrincipalGroup, "partner-org/pve-admins")
+	application := grantTestApplication(t, "pve-like")
+	bob := grantTestUser(t, grantTestResourceOrg, "internal-bob")
+
+	// an admin of the partner organization gives a member of the granted group the ID of a
+	// user of the resource organization, which would be the same "sub" at the relying party
+	dave := grantTestUser(t, grantTestPartnerOrg, "dave")
+	if _, err := ormer.Engine.Where("owner = ? and name = ?", dave.Owner, dave.Name).Cols("id").Update(&User{Id: bob.Id}); err != nil {
+		t.Fatal(err)
+	}
+	if msg, _ := CheckApplicationAccess(grantTestUser(t, grantTestPartnerOrg, "dave"), application, "en"); msg == "" {
+		t.Fatal("user sharing the ID of another user admitted")
+	}
+	grant := ApplicationGrant{Owner: grantTestResourceOrg, Application: "grafana-like", PrincipalType: "User", Principal: "partner-org/dave"}
+	if err := CheckApplicationGrant(&grant, grantTestApplication(t, "grafana-like"), "en"); err == nil {
+		t.Fatal("grant for a user with a duplicate ID accepted")
+	}
+}
+
+func TestApplicationGrantClaimsDropHomeAdminFlag(t *testing.T) {
+	newApplicationGrantTestDb(t)
+	addTestGrant(t, "grafana-like", ApplicationGrantPrincipalUser, "partner-org/partner-admin")
+	admin := grantTestUser(t, grantTestPartnerOrg, "partner-admin")
+
+	_, challenge := pkcePair()
+	code := authorize(t, admin, "client-grafana", challenge)
+	if code.Message != "" {
+		t.Fatal(code.Message)
+	}
+	if claims := parseTestClaims(t, code.Token.AccessToken); claims["isAdmin"] != false {
+		t.Fatalf("admin flag of the home organization carried into the application: %v", claims["isAdmin"])
+	}
+}
+
+func TestApplicationGrantCaseInsensitiveNameCollision(t *testing.T) {
+	newApplicationGrantTestDb(t)
+	addTestGrant(t, "pve-like", ApplicationGrantPrincipalUser, "partner-org/carol")
+	impostor := &User{Owner: grantTestResourceOrg, Name: "Carol@Partner-Org", Id: util.GenerateId(), CreatedTime: util.GetCurrentTime()}
+	mustAdd(t, func(u *User) (bool, error) { return AddUser(u, "en") }, impostor)
+
+	if msg, _ := CheckApplicationAccess(grantTestUser(t, grantTestPartnerOrg, "carol"), grantTestApplication(t, "pve-like"), "en"); msg == "" {
+		t.Fatal("qualified name colliding without case admitted")
+	}
+}
+
+func TestApplicationGrantFollowsApplicationRename(t *testing.T) {
+	newApplicationGrantTestDb(t)
+	addTestGrant(t, "pve-like", ApplicationGrantPrincipalUser, "partner-org/carol")
+	application := grantTestApplication(t, "pve-like")
+	application.Name = "pve-renamed"
+	if _, err := UpdateApplication("admin/pve-like", application, true, "en", nil); err != nil {
+		t.Fatal(err)
+	}
+	if grants, _ := GetApplicationGrants(grantTestResourceOrg, "pve-renamed"); len(grants) != 1 {
+		t.Fatal("grant did not follow the renamed application")
+	}
+	if grants, _ := GetApplicationGrants(grantTestResourceOrg, "pve-like"); len(grants) != 0 {
+		t.Fatal("grant left behind for the old application name")
+	}
+}
+
+func TestApplicationGrantOrganizationDeletionIsExact(t *testing.T) {
+	newApplicationGrantTestDb(t)
+	mustAdd(t, AddOrganization, &Organization{Owner: "admin", Name: "partner_org", DisplayName: "partner_org", CreatedTime: util.GetCurrentTime()})
+	addTestGrant(t, "pve-like", ApplicationGrantPrincipalUser, "partner-org/carol")
+
+	if err := deleteApplicationGrantsByOrganization("partner_org"); err != nil {
+		t.Fatal(err)
+	}
+	if grants, _ := GetApplicationGrants(grantTestResourceOrg, "pve-like"); len(grants) != 1 {
+		t.Fatal("deleting one organization removed the grants of a similarly named one")
+	}
+	if err := deleteApplicationGrantsByOrganization(grantTestPartnerOrg); err != nil {
+		t.Fatal(err)
+	}
+	if grants, _ := GetApplicationGrants(grantTestResourceOrg, "pve-like"); len(grants) != 0 {
+		t.Fatal("grants of the deleted principal organization kept")
+	}
+}

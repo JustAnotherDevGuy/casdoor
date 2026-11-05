@@ -130,12 +130,18 @@ func CheckApplicationGrant(grant *ApplicationGrant, application *Application, la
 	if principalOwner == application.Organization {
 		return errors.New(i18n.Translate(lang, "application:The principal belongs to the organization of the application, which already has access"))
 	}
+	// one answer for a missing organization, user or group, so that a grant can't be used to
+	// probe another organization
+	notFound := fmt.Errorf(i18n.Translate(lang, "application:The principal: %s does not exist"), grant.Principal)
 	organization, err := getOrganization("admin", principalOwner)
 	if err != nil {
 		return err
 	}
 	if organization == nil {
-		return fmt.Errorf(i18n.Translate(lang, "auth:The organization: %s does not exist"), principalOwner)
+		return notFound
+	}
+	if strings.Contains(principalOwner, "@") {
+		return fmt.Errorf(i18n.Translate(lang, "application:Invalid principal: %s"), grant.Principal)
 	}
 
 	switch grant.PrincipalType {
@@ -145,10 +151,7 @@ func CheckApplicationGrant(grant *ApplicationGrant, application *Application, la
 			return err
 		}
 		if user == nil || user.IsDeleted {
-			return fmt.Errorf(i18n.Translate(lang, "general:The user: %s doesn't exist"), grant.Principal)
-		}
-		if user.Id == "" {
-			return fmt.Errorf(i18n.Translate(lang, "application:The user: %s has no ID and can't be granted access"), grant.Principal)
+			return notFound
 		}
 		collision, err := getApplicationGrantNameCollision(user, application)
 		if err != nil {
@@ -157,6 +160,13 @@ func CheckApplicationGrant(grant *ApplicationGrant, application *Application, la
 		if collision != "" {
 			return fmt.Errorf(i18n.Translate(lang, "application:The name %s is already used by a user of the application's organization"), collision)
 		}
+		identityOk, err := checkApplicationGrantIdentity(user, application)
+		if err != nil {
+			return err
+		}
+		if !identityOk {
+			return fmt.Errorf(i18n.Translate(lang, "application:The ID of the user: %s is not unique and can't identify the user to the application"), grant.Principal)
+		}
 		grant.PrincipalId = user.Id
 	case ApplicationGrantPrincipalGroup:
 		group, err := getGroup(principalOwner, principalName)
@@ -164,7 +174,7 @@ func CheckApplicationGrant(grant *ApplicationGrant, application *Application, la
 			return err
 		}
 		if group == nil {
-			return fmt.Errorf(i18n.Translate(lang, "auth:The group: %s does not exist"), grant.Principal)
+			return notFound
 		}
 		grant.PrincipalId = ""
 	default:
@@ -232,8 +242,25 @@ func renameApplicationGrantGroup(oldId string, newId string) error {
 }
 
 func deleteApplicationGrantsByOrganization(organization string) error {
-	_, err := ormer.Engine.Where("owner = ? or principal like ?", organization, organization+"/%").Delete(&ApplicationGrant{})
-	return err
+	_, err := ormer.Engine.Where("owner = ?", organization).Delete(&ApplicationGrant{})
+	if err != nil {
+		return err
+	}
+
+	grants := []*ApplicationGrant{}
+	err = ormer.Engine.Find(&grants)
+	if err != nil {
+		return err
+	}
+	for _, grant := range grants {
+		owner, _ := util.GetOwnerAndNameFromIdNoCheck(grant.Principal)
+		if owner == organization {
+			if _, err = DeleteApplicationGrant(grant); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // isUserInGroupTree reports whether the user is a member of the group or of one of its
@@ -326,17 +353,39 @@ func isApplicationGrantUser(user *User, application *Application) (bool, error) 
 }
 
 // getApplicationGrantNameCollision returns the qualified name of the user when a user of the
-// application's organization already has it.
+// application's organization already has it, compared without case as relying parties often
+// fold the case of usernames.
 func getApplicationGrantNameCollision(user *User, application *Application) (string, error) {
 	qualifiedName := GetApplicationGrantUserName(user)
-	collidingUser, err := getUser(application.Organization, qualifiedName)
+	count, err := ormer.Engine.Where("owner = ? and lower(name) = ?", application.Organization, strings.ToLower(qualifiedName)).Count(&User{})
 	if err != nil {
 		return "", err
 	}
-	if collidingUser != nil {
+	if count > 0 {
 		return qualifiedName, nil
 	}
 	return "", nil
+}
+
+// checkApplicationGrantIdentity refuses a user whose claims could be taken for another user's
+// at the relying party: "sub" is the user's ID, which an admin of the user's organization may
+// set, and "name@organization" is only unambiguous while the organization's name has no "@".
+func checkApplicationGrantIdentity(user *User, application *Application) (bool, error) {
+	if user.Id == "" || strings.Contains(user.Owner, "@") {
+		return false, nil
+	}
+	count, err := ormer.Engine.Where("id = ?", user.Id).Count(&User{})
+	if err != nil {
+		return false, err
+	}
+	if count != 1 {
+		return false, nil
+	}
+	collision, err := getApplicationGrantNameCollision(user, application)
+	if err != nil {
+		return false, err
+	}
+	return collision == "", nil
 }
 
 // CheckApplicationAccess returns why the user may not get tokens of the application through
@@ -364,11 +413,11 @@ func CheckApplicationAccess(user *User, application *Application, lang string) (
 		return i18n.Translate(lang, "auth:Unauthorized operation"), nil
 	}
 
-	collision, err := getApplicationGrantNameCollision(user, application)
+	identityOk, err := checkApplicationGrantIdentity(user, application)
 	if err != nil {
 		return "", err
 	}
-	if collision != "" {
+	if !identityOk {
 		return i18n.Translate(lang, "auth:Unauthorized operation"), nil
 	}
 
@@ -397,6 +446,8 @@ func CheckApplicationAccess(user *User, application *Application, lang string) (
 func qualifyApplicationGrantUser(user *User, application *Application) (*User, error) {
 	userCopy := *user
 	userCopy.Name = GetApplicationGrantUserName(user)
+	// being an admin of their own organization means nothing for the application
+	userCopy.IsAdmin = false
 
 	if application.TokenGroupFormat == "Path" {
 		groups, err := user.GetUserFullGroupPath()

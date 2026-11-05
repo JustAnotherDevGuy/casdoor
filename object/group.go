@@ -211,15 +211,18 @@ func UpdateGroup(id string, group *Group, isGlobalAdmin bool, lang string) (bool
 			return false, err
 		}
 
-		err = renameApplicationGrantGroup(util.GetId(owner, name), util.GetId(owner, group.Name))
-		if err != nil {
-			return false, err
-		}
 	}
 
 	affected, err := ormer.Engine.ID(core.PK{owner, name}).AllCols().Update(group)
 	if err != nil {
 		return false, err
+	}
+
+	if affected != 0 && name != group.Name {
+		err = renameApplicationGrantGroup(util.GetId(owner, name), util.GetId(owner, group.Name))
+		if err != nil {
+			return false, err
+		}
 	}
 
 	return affected != 0, nil

@@ -95,6 +95,7 @@
     "Enable signup": "Ativar registro",
     "Enable signup - Tooltip": "Se permite que os usuários registrem uma nova conta",
     "Enter the exact name, members of other organizations are not listed": "Enter the exact name, members of other organizations are not listed",
+    "Everyone the other organization puts into this group or one of its subgroups gets access, including through default groups of its sign-up or sync settings.": "Everyone the other organization puts into this group or one of its subgroups gets access, including through default groups of its sign-up or sync settings.",
     "Exact name": "Exact name",
     "Existing Field": "Campo existente",
     "Existing users or groups of other organizations can sign in to this application with their own account, password and MFA. The application keeps its organization and its client ID. A grant only allows the sign-in. What the user may do in the application is still decided by the application.": "Existing users or groups of other organizations can sign in to this application with their own account, password and MFA. The application keeps its organization and its client ID. A grant only allows the sign-in. What the user may do in the application is still decided by the application.",
