@@ -58,6 +58,15 @@ type ApplicationEntitlements struct {
 	Warnings  []string               `json:"warnings"`
 }
 
+func (e *ApplicationEntitlements) isPrivileged() bool {
+	for _, role := range e.Roles {
+		if role.IsPrivileged {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *ApplicationEntitlements) isEmpty() bool {
 	return e == nil || (len(e.Groups) == 0 && len(e.RoleNames) == 0 && len(e.Claims) == 0)
 }
@@ -457,7 +466,7 @@ type ApplicationAccessPreview struct {
 	Privileged       bool                     `json:"privileged"`
 }
 
-func emitsTokenField(application *Application, field string) bool {
+func EmitsTokenField(application *Application, field string) bool {
 	if application.TokenFormat != "JWT-Custom" {
 		return true
 	}
@@ -470,7 +479,7 @@ func emitsTokenField(application *Application, field string) bool {
 func GetApplicationAccessPreview(user *User, application *Application, extraRoles []string, lang string) (*ApplicationAccessPreview, error) {
 	res := &ApplicationAccessPreview{
 		User: user.GetId(), HomeOrganization: user.Owner, OwnGroups: []string{}, OwnRoles: []string{},
-		EmitsGroups: emitsTokenField(application, "Groups"), EmitsRoles: emitsTokenField(application, "Roles"),
+		EmitsGroups: EmitsTokenField(application, "Groups"), EmitsRoles: EmitsTokenField(application, "Roles"),
 	}
 
 	isUserOfApplication, err := IsUserOfApplication(user, application)
@@ -498,9 +507,7 @@ func GetApplicationAccessPreview(user *User, application *Application, extraRole
 		return nil, err
 	}
 	res.Entitlements = entitlements
-	for _, role := range entitlements.Roles {
-		res.Privileged = res.Privileged || role.IsPrivileged
-	}
+	res.Privileged = entitlements.isPrivileged()
 
 	if res.Access == "Denied" {
 		res.PreferredName = GetApplicationGrantUserName(user)
