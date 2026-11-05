@@ -46,6 +46,11 @@ func newApplicationGrantTestDb(t *testing.T) {
 	t.Setenv("dataSourceName", dataSourceName)
 	t.Setenv("dbName", "")
 
+	previousOrmer, previousUserEnforcer := ormer, userEnforcer
+	t.Cleanup(func() {
+		ormer, userEnforcer = previousOrmer, previousUserEnforcer
+	})
+
 	var err error
 	ormer, err = NewAdapter("sqlite", dataSourceName, "")
 	if err != nil {
