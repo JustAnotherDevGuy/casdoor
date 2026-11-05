@@ -1401,6 +1401,11 @@ func DeleteUser(user *User) (bool, error) {
 		return false, err
 	}
 
+	err = deleteApplicationGrantsByPrincipal(ApplicationGrantPrincipalUser, user.GetId())
+	if err != nil {
+		return false, err
+	}
+
 	organization, err := GetOrganizationByUser(user)
 	if err != nil {
 		return false, err
@@ -1437,6 +1442,11 @@ func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, 
 	if err != nil {
 		return nil, err
 	}
+
+	isGrantUser, err := isApplicationGrantUser(user, application)
+	if err != nil {
+		return nil, err
+	}
 	allowedFields := make(map[string]bool)
 	hasWhitelist := application != nil && len(application.TokenFields) > 0
 	if hasWhitelist {
@@ -1454,6 +1464,9 @@ func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, 
 	if strings.Contains(scope, "profile") {
 		if allowed("Name") {
 			resp.Name = user.Name
+			if isGrantUser {
+				resp.Name = GetApplicationGrantUserName(user)
+			}
 		}
 		if allowed("DisplayName") {
 			resp.DisplayName = user.DisplayName
@@ -1462,11 +1475,19 @@ func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, 
 			resp.Avatar = user.Avatar
 		}
 		if allowed("Groups") {
-			groups, err := user.GetGroupsForToken(application)
-			if err != nil {
-				return nil, err
+			if isGrantUser {
+				qualifiedUser, err := qualifyApplicationGrantUser(user, application)
+				if err != nil {
+					return nil, err
+				}
+				resp.Groups = qualifiedUser.Groups
+			} else {
+				groups, err := user.GetGroupsForToken(application)
+				if err != nil {
+					return nil, err
+				}
+				resp.Groups = groups
 			}
-			resp.Groups = groups
 		}
 
 		if allowed("Roles") || allowed("Permissions") {
@@ -1474,17 +1495,24 @@ func GetUserInfo(user *User, scope string, aud string, host string) (*Userinfo, 
 			if err != nil {
 				return nil, err
 			}
+			rolesUser := user
+			if isGrantUser {
+				rolesUser, err = qualifyApplicationGrantUser(user, application)
+				if err != nil {
+					return nil, err
+				}
+			}
 
 			if allowed("Roles") {
 				resp.Roles = []string{}
-				for _, role := range user.Roles {
+				for _, role := range rolesUser.Roles {
 					resp.Roles = append(resp.Roles, role.Name)
 				}
 			}
 
 			if allowed("Permissions") {
 				resp.Permissions = []string{}
-				for _, permission := range user.Permissions {
+				for _, permission := range rolesUser.Permissions {
 					resp.Permissions = append(resp.Permissions, permission.Name)
 				}
 			}
