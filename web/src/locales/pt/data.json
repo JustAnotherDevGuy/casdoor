@@ -97,7 +97,7 @@
     "Enter the exact name, members of other organizations are not listed": "Enter the exact name, members of other organizations are not listed",
     "Exact name": "Exact name",
     "Existing Field": "Campo existente",
-    "Existing users or groups of other organizations can sign in to this application with their own account, password and MFA. The application keeps its organization and its client ID. A grant only allows the sign-in: what the user may do in the application is still decided by the application.": "Existing users or groups of other organizations can sign in to this application with their own account, password and MFA. The application keeps its organization and its client ID. A grant only allows the sign-in: what the user may do in the application is still decided by the application.",
+    "Existing users or groups of other organizations can sign in to this application with their own account, password and MFA. The application keeps its organization and its client ID. A grant only allows the sign-in. What the user may do in the application is still decided by the application.": "Existing users or groups of other organizations can sign in to this application with their own account, password and MFA. The application keeps its organization and its client ID. A grant only allows the sign-in. What the user may do in the application is still decided by the application.",
     "Expire time": "Expire time",
     "Expired": "Expired",
     "Export JSON": "Exportar JSON",
