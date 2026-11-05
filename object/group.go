@@ -210,6 +210,11 @@ func UpdateGroup(id string, group *Group, isGlobalAdmin bool, lang string) (bool
 		if err != nil {
 			return false, err
 		}
+
+		err = renameApplicationGrantGroup(util.GetId(owner, name), util.GetId(owner, group.Name))
+		if err != nil {
+			return false, err
+		}
 	}
 
 	affected, err := ormer.Engine.ID(core.PK{owner, name}).AllCols().Update(group)
@@ -307,7 +312,12 @@ func DeleteGroup(group *Group) (bool, error) {
 		return false, errors.New("group has users")
 	}
 
-	return deleteGroup(group)
+	affected, err := deleteGroup(group)
+	if err != nil || !affected {
+		return affected, err
+	}
+
+	return affected, deleteApplicationGrantsByPrincipal(ApplicationGrantPrincipalGroup, group.GetId())
 }
 
 func checkGroupName(name string) error {
