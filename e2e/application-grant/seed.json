@@ -1,0 +1,29 @@
+{
+  "organizations": [
+    {"owner": "admin", "name": "resource-org", "displayName": "Resource Org (synthetic)", "passwordType": "bcrypt", "defaultApplication": "pve-like", "mfaItems": [{"name": "app", "rule": "Optional"}]},
+    {"owner": "admin", "name": "partner-org", "displayName": "Partner Org (synthetic)", "passwordType": "bcrypt", "defaultApplication": "partner-portal"},
+    {"owner": "admin", "name": "other-org", "displayName": "Other Org (synthetic)", "passwordType": "bcrypt", "defaultApplication": "other-portal"}
+  ],
+  "applications": [
+    {"owner": "admin", "name": "pve-like", "displayName": "PVE-like RP", "organization": "resource-org", "clientId": "e2e-client-pve", "clientSecret": "e2e-secret-pve", "enablePassword": true, "signinMethods": [{"name": "Password", "displayName": "Password", "rule": "All"}], "redirectUris": ["https://rp.example.test/callback"], "grantTypes": ["authorization_code"], "tokenFormat": "JWT-Custom", "tokenFields": ["Name", "Groups"], "tokenGroupFormat": "Name", "tokenSigningMethod": "RS256", "expireInHours": 1, "cookieExpireInHours": 1},
+    {"owner": "admin", "name": "grafana-like", "displayName": "Grafana-like RP", "organization": "resource-org", "clientId": "e2e-client-grafana", "clientSecret": "e2e-secret-grafana", "enablePassword": true, "signinMethods": [{"name": "Password", "displayName": "Password", "rule": "All"}], "redirectUris": ["https://rp.example.test/callback"], "grantTypes": ["authorization_code", "refresh_token"], "tokenFormat": "JWT", "tokenFields": ["Name", "DisplayName", "Email", "Groups"], "tokenGroupFormat": "Path", "tokenSigningMethod": "RS256", "expireInHours": 1, "refreshExpireInHours": 1, "disableRefreshRotation": true, "cookieExpireInHours": 1},
+    {"owner": "admin", "name": "partner-portal", "organization": "partner-org", "clientId": "e2e-client-partner", "clientSecret": "e2e-secret-partner", "enablePassword": true, "signinMethods": [{"name": "Password", "displayName": "Password", "rule": "All"}], "redirectUris": ["https://partner.example.test/callback"], "grantTypes": ["authorization_code"]},
+    {"owner": "admin", "name": "other-portal", "organization": "other-org", "clientId": "e2e-client-other", "clientSecret": "e2e-secret-other", "enablePassword": true, "signinMethods": [{"name": "Password", "displayName": "Password", "rule": "All"}], "redirectUris": ["https://other.example.test/callback"], "grantTypes": ["authorization_code"]}
+  ],
+  "groups": [
+    {"owner": "resource-org", "name": "pve-admins", "displayName": "PVE admins", "isTopGroup": true, "isEnabled": true},
+    {"owner": "partner-org", "name": "pve-admins", "displayName": "Same name, other tenant", "isTopGroup": true, "isEnabled": true},
+    {"owner": "partner-org", "name": "team", "displayName": "Partner team", "isTopGroup": true, "isEnabled": true},
+    {"owner": "partner-org", "name": "contractors", "displayName": "Contractors", "parentId": "team", "isTopGroup": false, "isEnabled": true}
+  ],
+  "users": [
+    {"owner": "resource-org", "name": "resource-admin", "displayName": "Resource Admin", "password": "E2e-Synthetic-Pass-1", "isAdmin": true, "groups": ["resource-org/pve-admins"], "signupApplication": "pve-like"},
+    {"owner": "resource-org", "name": "internal-bob", "displayName": "Internal Bob", "password": "E2e-Synthetic-Pass-1", "groups": ["resource-org/pve-admins"], "signupApplication": "pve-like"},
+    {"owner": "partner-org", "name": "carol", "displayName": "Carol Partner", "email": "carol@partner.example.test", "password": "E2e-Synthetic-Pass-1", "groups": ["partner-org/pve-admins"], "signupApplication": "partner-portal"},
+    {"owner": "partner-org", "name": "dave", "displayName": "Dave Partner", "password": "E2e-Synthetic-Pass-1", "groups": ["partner-org/pve-admins"], "signupApplication": "partner-portal"},
+    {"owner": "partner-org", "name": "erin", "displayName": "Erin Contractor", "password": "E2e-Synthetic-Pass-1", "groups": ["partner-org/contractors"], "signupApplication": "partner-portal"},
+    {"owner": "partner-org", "name": "partner-admin", "displayName": "Partner Admin", "password": "E2e-Synthetic-Pass-1", "isAdmin": true, "signupApplication": "partner-portal"},
+    {"owner": "partner-org", "name": "internal-bob", "displayName": "Bob of partner-org", "password": "E2e-Synthetic-Pass-1", "signupApplication": "partner-portal"},
+    {"owner": "other-org", "name": "frank", "displayName": "Frank Other", "password": "E2e-Synthetic-Pass-1", "signupApplication": "other-portal"}
+  ]
+}
