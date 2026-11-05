@@ -273,6 +273,18 @@ func (c *ApiController) GetApplicationAccessPreview() {
 		return
 	}
 
+	// without a user: only what the roles add, e.g. to preview a group grant
+	if userId == "" {
+		entitlements, err := object.GetApplicationEntitlements(nil, application, roles)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+		c.ResponseOk(&object.ApplicationAccessPreview{Entitlements: entitlements, Groups: entitlements.Groups, Roles: entitlements.RoleNames,
+			EmitsGroups: object.EmitsTokenField(application, "Groups"), EmitsRoles: object.EmitsTokenField(application, "Roles")})
+		return
+	}
+
 	user, err := object.GetUser(userId)
 	if err != nil {
 		c.ResponseError(err.Error())
