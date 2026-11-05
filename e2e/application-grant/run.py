@@ -98,7 +98,7 @@ def authorize(application, username, organization="resource-org"):
     browser = Client()
     oauth = {"clientId": client_id, "responseType": "code", "redirectUri": REDIRECT, "scope": "openid profile email offline_access",
              "state": state, "nonce": nonce, "code_challenge_method": "S256", "code_challenge": challenge}
-    status, app_login = browser.request("GET", "/api/get-app-login", query=oauth)
+    status, app_login = browser.request("GET", "/api/get-app-login", query={**oauth, "type": "code"})
     if app_login.get("status") != "ok":
         return {"error": app_login.get("msg")}
     status, res = browser.request("POST", "/api/login", query=oauth, body={
@@ -269,6 +269,10 @@ def main():
     _, records = global_admin.request("GET", "/api/get-records", query={"pageSize": 100, "p": 1, "field": "action", "value": "delete-application-grant"})
     data = records.get("data") or []
     check("audit records for revocation", any(r.get("action") == "delete-application-grant" and r.get("organization") == "resource-org" for r in data), len(data))
+
+    _, res = Client().request("GET", "/api/get-app-login", query={"type": "code", "clientId": "e2e-client-pve", "responseType": "code",
+                                                                   "redirectUri": "https://attacker.example.test/cb", "scope": "openid", "state": "x"})
+    check("unregistered redirect URI refused", res.get("status") != "ok", res)
 
     status, discovery = Client().request("GET", "/.well-known/openid-configuration")
     check("discovery document unchanged", status == 200 and discovery.get("issuer"), discovery)
